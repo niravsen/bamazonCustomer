@@ -15,126 +15,101 @@ host: "localhost",
 port: 8889,
 user: "root",
 password: "root",
-database: "bamazon",
-})
+database: "bamazon_db",
+});
 
 //when connecting you need a callback function
-function afterConnection(){
-    connection.query("SELECT * FROM products", function (err, res) {
-    if (err) throw (err);
-    console.log('-----------------------------------------------');
-    console.log("- .+. - .+. - .+. - .+. - .+. Welcome to Bamazon .+. - .+. - .+. - .+. - .+. -");
-    console.log('-----------------------------------------------');
-    // var temp = tabl
-    // console.log(res);
-    console.log(table.getTable(res));
-    connection.end();
+connection.connect(function(err){
+    if (err) {
+        console.error("Error in connection: " + err.stack);
+    }
+    inputProducts();
 });
+
+function inputProducts(){
+    connection.query("SELECT * FROM products", function (err, res){
+        if (err) throw err;
+        console.table(res);
+    promptItems(res);
+    })
 }
 
-connection.connect(function(err){
-    if(err) throw err;
-    console.log("connected as id of " + connection.threadId);
-    afterConnection();
-    // connection.end(); 
-});
+function promptItems(inventory) {
+    inquirer.prompt([
+        { 
+        type: "input",
+        name: "choice",
+        message: "Please provide the ID of the product that you would like to purchase. (Quit with Q)",
+        validate: function(val) {
+            return !isNaN(val) || val.toLowerCase() === "q"
+        }
+       }
+    ])
+    .then(function(val){
+        ifExit(val.choice);
+        var choiceID = parseInt(val.choice);
+        var product = checkInventory(choiceID, inventory);
+        if (product) {
+            quantityPrompt(product);
+        }
+        else{
+            console.log("\nThat item is not in the inventory.");
+            inputProducts();
+        }
+    });
+}
 
-console.log('');
-inquirer.prompt([
-{
-    type: "input",
-    name: "item_id",
-    message: "Please provide the ID of the product that you would like to purchase.",
-    validate: function(value) {
-        if (isNaN(value) == false && parseInt(value) <= res.length && parseInt (value) > 0) {
-            return true;
+function quantityPrompt(product){
+    inquirer.prompt([
+        {
+        type: "input",
+        name: "quantity",
+        message: "How many would you like? (Quit with Q)",
+        validate: function(val){
+            return val > 0 || val.toLowerCase() === "q";
+        }  
+      }
+    ])
+    .then(function(val){
+        ifExit(val.quantity);
+        var quantity = parseInt(val.quantity);
+        if (quantity > product.stock_quantity){
+            console.log("\nInsufficient quantity!");
+            inputProducts();
         }
         else {
-            return false;
+            makePurchase(product, quantity);
         }
-      }
-    },
-{
-    type: "input",
-    name: "quantity",
-    message: "How many units of the products would you like to purchase?",
-    validate: function(value) {
-        
-        if(isNaN(value)){
-            return false;
-          } else {
-            return true;
-      }
-    }
-},
-]).then(function(ans){
-    var idBuy = (ans.id)-1;
-    var qtyBuy = parseInt(ans.quantity);
-    var total = parseFloat(((res[idBuy].Price)*qtyBuy).toFixed(2));
-
-    if(res[idBuy].StockQuantity >= qtyBuy){
-    connection.query("UPDATE Products SET ? WHERE ?", [
-    {StockQuantity: (res [idBuy].StockQuantity - qtyBuy)},
-    {item_id: ans.id}
-    ], function(err,result) {
-    if (err) throw err;
-    console.log("Success! Your total is $" + total.toFixed(2) + ". Your item(s) will be shipped to you in 3-5 business days.");
-});
-
-connection.query("SELECT * FROM Departments", function(err, deptRes){
-    if(err) throw err;
-    var index;
-    for(var i = 0; i < deptRes.length; i++){
-      if(deptRes[i].department_name === res[idBuy].department_name){
-        index = i;
-      }
-    }
-          
-          connection.query("UPDATE Departments SET ? WHERE ?", [
-            {TotalSales: deptRes[index].TotalSales + total},
-            {DepartmentName: res[idBuy].DepartmentName}
-            ], function(err, deptRes){
-                if(err) throw err;
-               
-            });
-        });
-    }
-         else {
-          console.log("Sorry, there's not enough in stock!");
-        }
-  
-        reprompt();
-      })
-  
-  function reprompt(){
-    inquirer.prompt([{
-      type: "confirm",
-      name: "reply",
-      message: "Would you like to purchase another item?"
-    }]).then(function(ans){
-      if(ans.reply){
-        start();
-      } else{
-        console.log("See you soon!");
-      }
     });
-  }
-  
-//   start();
-// function runSearch();
-//  inquirer 
-//  .prompt({
-//      message: "Please provide the ID of the product you would like to purchase.",
-//      choices: ["1","2","3","4","5","6","7","8","9","10",
-//      ]
-//  })
-// .then(function(answer){
-//     switch(answer.action) {
-//     case "":
-//     itemIdSearch();
-//     break;
-//     }
-// })
+}
 
-    // afterConnection();
-    connection.end();
+function makePurchase(product, quantity) {
+    connection.query(
+        "UPDATE products SET stock_quantity = stock_quantity - ? WHERE item_id = ?",
+        [quantity, product.item_id],
+        function(err, res) {
+            console.log ("\nSuccessfully purchased " + quantity + " " + product.product_name + "'s!");
+            inputProducts();
+        }
+    );
+}
+
+function checkInventory(choiceId, inventory) {
+    for (var i = 0; i < inventory.length; i++){
+        if (inventory[i].item_id === choiceId){
+            return inventory[i];
+        }
+    }
+    return null;
+}
+
+function ifExit(choice){
+    if (choice.toLowerCase() === "q"){
+        console.log("See Ya!");
+        process.exit(0);
+    }
+}
+
+
+
+
